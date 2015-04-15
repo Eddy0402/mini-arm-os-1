@@ -15,6 +15,14 @@
  */
 #define USART_FLAG_TXE	((uint16_t) 0x0080)
 
+void systick_init(void)
+{
+	/* SysTick configuration */
+	*SYSTICK_LOAD = 7200000;
+	*SYSTICK_VAL = 1;
+	*SYSTICK_CTRL = 0x07;
+}
+
 void usart_init(void)
 {
 	*(RCC_APB2ENR) |= (uint32_t) (0x00000001 | 0x00000004);
@@ -108,8 +116,9 @@ int main(void)
 	unsigned int user_stacks[TASK_LIMIT][STACK_SIZE];
 	unsigned int *usertasks[TASK_LIMIT];
 	size_t task_count = 0;
-	size_t current_task;
+	size_t current_task = 0;
 
+	systick_init();
 	usart_init();
 
 	print_str("OS: Starting...\n");
@@ -122,11 +131,8 @@ int main(void)
 
 	print_str("\nOS: Start round-robin scheduler!\n");
 
-	/* SysTick configuration */
-	*SYSTICK_LOAD = 7200000;
-	*SYSTICK_VAL = 0;
-	*SYSTICK_CTRL = 0x07;
-	current_task = 0;
+	/* enable interrupt, implies scheduler starts */
+	__asm__("cpsie i");
 
 	while (1) {
 		print_str("OS: Activate next task\n");

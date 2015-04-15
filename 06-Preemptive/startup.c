@@ -2,18 +2,27 @@
 #include "reg.h"
 
 /* Bit definition for RCC_CR register */
-#define RCC_CR_HSION	((uint32_t) 0x00000001)		/*!< Internal High Speed clock enable */
 #define RCC_CR_HSEON	((uint32_t) 0x00010000)		/*!< External High Speed clock enable */
 #define RCC_CR_HSERDY	((uint32_t) 0x00020000)		/*!< External High Speed clock ready flag */
-#define RCC_CR_CSSON	((uint32_t) 0x00080000)		/*!< Clock Security System enable */
+#define RCC_CR_PLLON	((uint32_t)0x01000000)		/*!< PLL enable */
+#define RCC_CR_PLLRDY	((uint32_t)0x02000000)		/*!< PLL clock ready flag */
 
 /* Bit definition for RCC_CFGR register */
 #define  RCC_CFGR_SW		((uint32_t) 0x00000003)	/*!< SW[1:0] bits (System clock Switch) */
-#define  RCC_CFGR_SW_HSE	((uint32_t) 0x00000001)	/*!< HSE selected as system clock */
+#define  RCC_CFGR_SW_PLL	((uint32_t)0x00000002)	/*!< PLL selected as system clock */
 #define  RCC_CFGR_SWS		((uint32_t) 0x0000000C)	/*!< SWS[1:0] bits (System Clock Switch Status) */
 #define  RCC_CFGR_HPRE_DIV1	((uint32_t) 0x00000000)	/*!< SYSCLK not divided */
 #define  RCC_CFGR_PPRE1_DIV1	((uint32_t) 0x00000000)	/*!< HCLK not divided */
 #define  RCC_CFGR_PPRE2_DIV1	((uint32_t) 0x00000000)	/*!< HCLK not divided */
+
+#define  RCC_CFGR_PLLSRC		((uint32_t)0x00010000)	/*!< PLL entry clock source */
+#define  RCC_CFGR_PLLXTPRE		((uint32_t)0x00020000)	/*!< HSE divider for PLL entry */
+
+/*!< PLLMUL configuration */
+#define  RCC_CFGR_PLLMULL		((uint32_t)0x003C0000)	/*!< PLLMUL[3:0] bits (PLL multiplication factor) */
+#define  RCC_CFGR_PLLMULL9		((uint32_t)0x001C0000)	/*!< PLL input clock*9 */
+
+#define  RCC_CFGR_PLLSRC_HSE	((uint32_t)0x00010000)	/*!< HSE clock selected as PLL entry clock source */
 
 /* Bit definition for FLASH_ACR register */
 #define FLASH_ACR_LATENCY	((uint8_t) 0x03)	/*!< LATENCY[2:0] bits (Latency) */
@@ -152,14 +161,30 @@ void rcc_clock_init(void)
 		/* PCLK1 = HCLK */
 		*RCC_CFGR |= (uint32_t) RCC_CFGR_PPRE1_DIV1;
 
-		/* Select HSE as system clock source */
-		*RCC_CFGR &= (uint32_t) ((uint32_t) ~(RCC_CFGR_SW));
-		*RCC_CFGR |= (uint32_t) RCC_CFGR_SW_HSE;
+		/*  PLL configuration: PLLCLK = HSE * 9 = 72 MHz */
+		*RCC_CFGR &= (uint32_t)((uint32_t)~(RCC_CFGR_PLLSRC | RCC_CFGR_PLLXTPRE |
+											RCC_CFGR_PLLMULL));
+		*RCC_CFGR |= (uint32_t)(RCC_CFGR_PLLSRC_HSE | RCC_CFGR_PLLMULL9);
 
-		/* Wait till HSE is used as system clock source */
-		while ((*RCC_CFGR & (uint32_t) RCC_CFGR_SWS) != (uint32_t) 0x04);
+		/* Enable PLL */
+		*RCC_CR |= RCC_CR_PLLON;
+
+		/* Wait till PLL is ready */
+		while((*RCC_CR & RCC_CR_PLLRDY) == 0)
+		{
+		}
+
+		/* Clear system clock source bits */
+		*RCC_CFGR &= (uint32_t)((uint32_t)~(RCC_CFGR_SW));
+		/* Select PLL as system clock source */
+		*RCC_CFGR |= (uint32_t)RCC_CFGR_SW_PLL;
+
+		/* Wait till PLL is used as system clock source */
+		while ((*RCC_CFGR & (uint32_t)RCC_CFGR_SWS) != (uint32_t)0x08)
+		{
+		}
 	} else {
 		/* If HSE fails to start-up, the application will have wrong clock
-		configuration. User can add here some code to deal with this error */
+		   configuration. User can add here some code to deal with this error */
 	}
 }
