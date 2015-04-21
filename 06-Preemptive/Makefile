@@ -20,5 +20,15 @@ qemu: $(TARGET)
 	@echo
 	qemu-system-arm -M stm32-p103 -nographic -kernel os.bin
 
+qemudbg: $(TARGET)
+	qemu-system-arm -M stm32-p103 \
+	    -monitor stdio\
+	    -gdb tcp::3333 -S \
+	    -kernel os.bin -semihosting 2>&1>/dev/null & \
+	echo $$! > qemu_pid && \
+	$(CROSS_COMPILE)gdb -x gdbscript && \
+	cat qemu_pid | `xargs kill 2>/dev/null || test true` && \
+	rm -f qemu_pid
+
 clean:
 	rm -f *.o *.elf *.bin *.list
