@@ -53,8 +53,8 @@ void print_str(const char *str)
 #define THREAD_PSP	0xFFFFFFFD
 
 static unsigned int user_stacks[TASK_LIMIT][STACK_SIZE];
-static unsigned int *user_stacktop[TASK_LIMIT];
-static unsigned int current_task = 0;
+unsigned int *user_stacktop[TASK_LIMIT];
+unsigned int current_task = 0;
 
 /* XXX: temporary design, manage pid by os, instead of user program*/
 static unsigned int task_count = 0;
@@ -71,23 +71,14 @@ static unsigned int task_count = 0;
  */
 int create_task(void (*start)(void))
 {
-	static int first = 1;
-
 	if (task_count == TASK_LIMIT) return ENOMEM;
 	int this_taskid = task_count++;
 
 	unsigned int *stack = user_stacks[this_taskid];
 
-	stack += STACK_SIZE - 32; /* End of stack, minus what we are about to push */
-	if (first) {
-		stack[8] = (unsigned int) start;
-		first = 0;
-	} else {
-		stack[8] = (unsigned int) THREAD_PSP;
-		stack[15] = (unsigned int) start;
-		stack[16] = (unsigned int) 0x01000000; /* PSR Thumb bit */
-	}
-	stack = activate(stack);
+	stack += STACK_SIZE - 16; /* End of stack, minus what we are about to push */
+	stack[14] = (unsigned int) start;
+	stack[15] = (unsigned int) 0x01000000; /* PSR Thumb bit */
 	user_stacktop[this_taskid] = stack;
 
 	return this_taskid;
@@ -97,15 +88,21 @@ void start_schedular(void)
 {
 	print_str("\nOS: Start round-robin scheduler!\n");
 
-	/* enable interrupt, implies scheduler starts */
+	/* enable interrupt */
 	__asm__("cpsie i");
+	__asm__("svc 0");
+}
 
-	while (1) {
-		print_str("OS: Activate next task\n");
-		user_stacktop[current_task] = activate(user_stacktop[current_task]);
-		print_str("OS: Back to OS\n");
+unsigned *switch_context()
+{
+	/* Select next task */
+	current_task = (current_task == task_count - 1) ? 0 : current_task + 1;
+	return user_stacktop[current_task];
+}
 
-		current_task = current_task == (task_count - 1) ? 0 : current_task + 1;
-	}
+void systick_handler(void)
+{
+	/* Send a PendSV */
+	*( ( volatile unsigned long *) 0xe000ed04 ) = 0x10000000;
 }
 
