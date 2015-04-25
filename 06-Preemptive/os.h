@@ -7,7 +7,7 @@
 void systick_init();
 void usart_init();
 
-int create_task(void (*start)(void));
+int create_task(void (*start)(void), int priority, int reload_tick);
 void start_schedular();
 
 void print_str(const char *str);

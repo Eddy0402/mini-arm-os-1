@@ -25,16 +25,27 @@ void task2_func(void)
 	}
 }
 
+void task3_func(void)
+{
+	print_str("task3: Created!\n");
+	while (1) {
+		print_str("task3: Running...\n");
+		delay(1000);
+	}
+}
+
 int main(void)
 {
 	systick_init();
 	usart_init();
 
-	int task1 = create_task(&task1_func);
-	int task2 = create_task(&task2_func);
+	int task1 = create_task(&task1_func, 1, 10);
+	int task2 = create_task(&task2_func, 2, 1);
+	int task3 = create_task(&task3_func, 2, 10);
 
 	(void)task1; // currently not used
 	(void)task2; // currently not used
+	(void)task3; // currently not used
 
 	start_schedular();
 

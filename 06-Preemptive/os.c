@@ -52,34 +52,71 @@ void print_str(const char *str)
 #define THREAD_MSP	0xFFFFFFF9
 #define THREAD_PSP	0xFFFFFFFD
 
-static unsigned int user_stacks[TASK_LIMIT][STACK_SIZE];
-unsigned int *user_stacktop[TASK_LIMIT];
-unsigned int current_task = 0;
+struct list_head{
+	struct list_head *next, *previous;
+};
 
-/* XXX: temporary design, manage pid by os, instead of user program*/
+#define list_entry(ptr, type, member) \
+	((type *)((char *)(ptr) - (unsigned long)(&((type *)0)->member)))
+
+#define list_next(ptr, type, member) \
+	(list_entry((ptr)->member.next, type, member))
+
+#define list_previous(ptr, type, member) \
+	(list_entry((ptr)->member.previous, type, member))
+
+#define list_add(list, ptr, type, member) \
+	do{ \
+		if((list) == NULL){ \
+			list = ptr;\
+			(ptr)->member.next = &(ptr)->member; \
+			(ptr)->member.previous = &(ptr)->member; \
+		}else{ \
+			(ptr)->member.next = &(list)->task_list; \
+			(ptr)->member.previous = list->task_list.previous; \
+			(list)->member.previous->next = &(ptr)->task_list; \
+			(list)->member.next = &(ptr)->task_list; \
+		} \
+	}while(0)
+
+struct tcb{
+	volatile unsigned int *stacktop;
+	volatile unsigned int stack[STACK_SIZE];
+	int remain_tick;
+	int reload_tick;
+	struct list_head task_list;
+};
+
+static struct tcb tasks[TASK_LIMIT];
+
+struct tcb *ready_list[MAX_PRIORITY] = {};
+
+volatile struct tcb *current_task = NULL;
+volatile struct tcb *next_task = NULL;
+
+/* XXX: temporary design, manage pid by os, instead of user program */
 static unsigned int task_count = 0;
 
-/* Initilize user task stack and execute it one time */
-/* XXX: Implementation of task creation is a little bit tricky. In fact,
- * after the second time we called `activate()` which is returning from
- * exception. But the first time we called `activate()` which is not returning
- * from exception. Thus, we have to set different `lr` value.
- * First time, we should set function address to `lr` directly. And after the
- * second time, we should set `THREAD_PSP` to `lr` so that exception return
- * works correctly.
- * http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dui0552a/Babefdjc.html
- */
-int create_task(void (*start)(void))
+int create_task(void (*start)(void), int priority, int reload_tick)
 {
 	if (task_count == TASK_LIMIT) return ENOMEM;
 	int this_taskid = task_count++;
 
-	unsigned int *stack = user_stacks[this_taskid];
+	tasks[this_taskid].stacktop = tasks[this_taskid].stack;
 
-	stack += STACK_SIZE - 16; /* End of stack, minus what we are about to push */
-	stack[14] = (unsigned int) start;
-	stack[15] = (unsigned int) 0x01000000; /* PSR Thumb bit */
-	user_stacktop[this_taskid] = stack;
+	/* End of stack, minus what we are about to push */
+	tasks[this_taskid].stacktop += STACK_SIZE - 16;
+	/* Task function */
+	tasks[this_taskid].stacktop[14] = (unsigned int) start;
+	/* PSR Thumb bit */
+	tasks[this_taskid].stacktop[15] = (unsigned int) 0x01000000;
+
+	tasks[this_taskid].remain_tick = reload_tick;
+	tasks[this_taskid].reload_tick = reload_tick;
+	list_add(ready_list[priority],
+			 &tasks[this_taskid],
+			   struct tcb,
+			   task_list);
 
 	return this_taskid;
 }
@@ -88,21 +125,37 @@ void start_schedular(void)
 {
 	print_str("\nOS: Start round-robin scheduler!\n");
 
-	/* enable interrupt */
+	for(int priority = MAX_PRIORITY - 1; priority >= 0;--priority){
+		if(ready_list[priority] != NULL){
+			current_task = ready_list[priority];
+			break;
+		}
+	}
+
+	if(current_task == NULL){
+		print_str("No task to be run!");
+		while(1);
+	}
+
+	/* enable interrupt and SVC for first task */
 	__asm__("cpsie i");
 	__asm__("svc 0");
 }
 
-unsigned *switch_context()
+volatile unsigned *switch_context()
 {
-	/* Select next task */
-	current_task = (current_task == task_count - 1) ? 0 : current_task + 1;
-	return user_stacktop[current_task];
+	return (current_task = next_task)->stacktop;
 }
 
 void systick_handler(void)
 {
-	/* Send a PendSV */
-	*( ( volatile unsigned long *) 0xe000ed04 ) = 0x10000000;
+	if(--current_task->remain_tick == 0){
+		current_task->remain_tick = current_task->reload_tick; // reload tick
+		next_task = list_next(current_task, struct tcb, task_list);
+		if(next_task != current_task){
+			/* Send a PendSV */
+			*( ( volatile unsigned long *) 0xe000ed04 ) = 0x10000000;
+		}
+	}
 }
 

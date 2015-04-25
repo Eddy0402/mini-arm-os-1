@@ -1,8 +1,8 @@
 .syntax unified
 
 .align 2
-.STACKTOP:
-.word user_stacktop
+.NEXTTASK:
+.word next_task
 .CURRTASK:
 .word current_task
 
@@ -15,10 +15,9 @@ pendsv_handler: /* Do context switch */
 	stmdb r0!, {r4-r11}
 
 	/* Get the stack top of the current task and store the new one */
-	ldr r3, .STACKTOP
 	ldr r2, .CURRTASK
 	ldr r2, [r2]
-	str r0, [r3, r2, lsl #2]
+	str r0, [r2]
 
 	/* switch the context in critical section */
 	push {lr}
@@ -45,10 +44,9 @@ svc_handler: /* Start first task */
 	push {r4-r11, ip, lr}
 
 	/* Get the stack top of the first task */
-	ldr r3, .STACKTOP
 	ldr r2, .CURRTASK
 	ldr r2, [r2]
-	ldr r0, [r3, r2]
+	ldr r0, [r2]
 	
 	/* Pop registers not automatically saved */
 	ldmia r0!, {r4-r11}
