@@ -1,0 +1,7 @@
+file os.elf
+target extended-remote :3333
+
+layout asm
+layout reg
+b main
+c
