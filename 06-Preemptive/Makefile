@@ -10,7 +10,7 @@ TARGET = os.bin
 all: $(TARGET)
 
 $(TARGET): main.c os.c startup.c context_switch.S syscall.S
-	$(CC) $(CFLAGS) $^ -o os.elf
+	$(CC) $(CFLAGS) $^ -o os.elf -std=c99
 	$(CROSS_COMPILE)objcopy -Obinary os.elf os.bin
 	$(CROSS_COMPILE)objdump -S os.elf > os.list
 
